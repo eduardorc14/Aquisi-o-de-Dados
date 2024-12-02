@@ -127,7 +127,7 @@ python3 sensor_emulator.py --ip 192.168.1.100 --port 8000 --sensor_id my_sensor 
 Este comando fará com que o emulador de sensor se conecte a um servidor em 192.168.1.100 na porta 8000, use 'my_sensor' como a ID do sensor, e envie uma nova leitura a cada 500 milissegundos.
 
 ## Emulador de Cliente
-
+    
 O emulador de cliente é um script em Python que simula um cliente se conectando ao servidor e solicitando os últimos `n` registros de um sensor específico. Ele envia uma solicitação ao servidor e, em seguida, imprime a solicitação e a resposta.
 
 ### Como usar

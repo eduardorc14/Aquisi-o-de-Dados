@@ -1,0 +1,8 @@
+- Criar uma classe LogManager
+- Public
+    - Process message
+    - Process message Log
+    - Process message Get
+- Private
+    - Mapeamento de sensor_id para arquivo
+    - Mutex para assegurar acesso seguro aos arquivos

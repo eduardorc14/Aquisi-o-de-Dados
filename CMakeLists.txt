@@ -1,23 +1,24 @@
 cmake_minimum_required(VERSION 3.10)
-project(data-aquisition-system)
+project(data-acquisition-system)
 
-# set C++ standard
+# Configuração da versão do C++
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_THREAD_PREFER_PTHREAD ON)                                                                                                                                                                                                           
-set(THREADS_PREFER_PTHREAD_FLAG ON)                                                                                                                                                                                                           
-find_package(Threads REQUIRED)                                                                                                                                                                                                                
 
+# Configurar política CMP0167
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 OLD)
+endif()
 
-# find Boost
-find_package(Boost 1.65.1 REQUIRED COMPONENTS system)
+# Configuração para Boost
+set(Boost_INCLUDE_DIR /usr/include)
+set(Boost_LIBRARY_DIR /usr/lib64)
 
-# include directories
-include_directories(${Boost_INCLUDE_DIRS} src)
+find_package(Boost 1.65.1 REQUIRED COMPONENTS system thread chrono locale)
 
-# target executable and its source files
+# Incluir diretórios
+include_directories(${Boost_INCLUDE_DIR})
+
+# Criar o executável e vincular as bibliotecas do Boost
 add_executable(das src/main.cpp)
-
-# link Boost libraries to the target executable
 target_link_libraries(das ${Boost_LIBRARIES})
-target_link_libraries(das  Threads::Threads)                                                                                                 
