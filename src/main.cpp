@@ -8,7 +8,8 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-
+#include <fstream>
+#include <mutex>
 using boost::asio::ip::tcp;
 
 #pragma pack(push, 1)
@@ -39,18 +40,46 @@ std::time_t string_to_time_t(const std::string& time_string) {
 class LogManager {
   public:
     void process_log(std::vector<std::string>& tokens){
+      LogRecord logrecord_;
       std::strncpy(logrecord_.sensor_id,tokens[1].c_str(), sizeof(logrecord_.sensor_id - 1));
-      logrecord_.sensor_id[sizeof(logrecord_.sensor_id) - 1] = '\0';
+      //logrecord_.sensor_id[sizeof(logrecord_.sensor_id) - 1] = '\0';
       logrecord_.timestamp = string_to_time_t(tokens[2]);
       logrecord_.value = std::stod(tokens[3]);
-      
+
+      std::lock_guard<std::mutex> lock(mutex_); // Protege o mapa
+      // Verifica se o sensor já está mapeado
+        if (file_map_.find(logrecord_.sensor_id) == file_map_.end()) {
+            // Se não estiver, cria um novo fluxo de arquivo
+            std::string filename = tokens[1] + ".dat";
+            std::fstream file(filename, std::ios::out | std::ios::in | std::ios::binary | std::ios::app);
+
+            if (!file.is_open()) {
+                // Se o arquivo não existir, cria e reabre
+                file.open(filename, std::ios::out | std::ios::binary);
+                file.close();
+                file.open(filename, std::ios::out | std::ios::in | std::ios::binary | std::ios::app);
+            }
+
+            // Adiciona o fluxo ao mapa
+            file_map_[logrecord_.sensor_id] = std::move(file);
+        }
+
+      // Escreve o registro no arquivo
+      std::fstream& file = file_map_[logrecord_.sensor_id];
+      file.write(reinterpret_cast<const char*>(&logrecord_), sizeof(LogRecord));
+      file.flush(); // Garante que os dados sejam salvos imediatamente
+      std::cout << "Log registrado para o sensor: " << logrecord_.sensor_id << std::endl;
+      file.close();
     }
+
+
     void process_get(std::vector<std::string>& tokens){
 
     }
 
   private:
-    struct LogRecord logrecord_;
+    std::unordered_map<std::string, std::fstream> file_map_; // Mapeia sensor_id para o fluxo de arquivo
+    std::mutex mutex_; // Protege o mapa contra acesso simultâneo
   
 };
 
