@@ -10,6 +10,7 @@
 #include <sstream>
 #include <fstream>
 #include <mutex>
+
 using boost::asio::ip::tcp;
 
 #pragma pack(push, 1)
@@ -37,12 +38,19 @@ std::time_t string_to_time_t(const std::string& time_string) {
     return std::mktime(&tm);
 }
 
+std::string time_t_to_string(std::time_t time) {
+    std::tm* tm = std::localtime(&time);
+    std::ostringstream ss;
+    ss << std::put_time(tm, "%Y-%m-%dT%H:%M:%S");
+    return ss.str();
+}
+
 class LogManager {
   public:
     void process_log(std::vector<std::string>& tokens){
       LogRecord logrecord_;
-      std::strncpy(logrecord_.sensor_id,tokens[1].c_str(), sizeof(logrecord_.sensor_id - 1));
-      //logrecord_.sensor_id[sizeof(logrecord_.sensor_id) - 1] = '\0';
+      std::strncpy(logrecord_.sensor_id,tokens[1].c_str(), sizeof(logrecord_.sensor_id) - 1);
+      logrecord_.sensor_id[sizeof(logrecord_.sensor_id) - 1] = '\0';
       logrecord_.timestamp = string_to_time_t(tokens[2]);
       logrecord_.value = std::stod(tokens[3]);
 
@@ -51,30 +59,76 @@ class LogManager {
         if (file_map_.find(logrecord_.sensor_id) == file_map_.end()) {
             // Se não estiver, cria um novo fluxo de arquivo
             std::string filename = tokens[1] + ".dat";
-            std::fstream file(filename, std::ios::out | std::ios::in | std::ios::binary | std::ios::app);
+            std::fstream file(filename, std::fstream::out | std::fstream::in | std::fstream::binary | std::fstream::app);
 
             if (!file.is_open()) {
                 // Se o arquivo não existir, cria e reabre
-                file.open(filename, std::ios::out | std::ios::binary);
+                file.open(filename, std::fstream::out | std::fstream::binary);
                 file.close();
-                file.open(filename, std::ios::out | std::ios::in | std::ios::binary | std::ios::app);
+                file.open(filename, std::fstream::out | std::fstream::in | std::fstream::binary | std::fstream::app);
             }
 
             // Adiciona o fluxo ao mapa
             file_map_[logrecord_.sensor_id] = std::move(file);
+            
         }
 
       // Escreve o registro no arquivo
       std::fstream& file = file_map_[logrecord_.sensor_id];
-      file.write(reinterpret_cast<const char*>(&logrecord_), sizeof(LogRecord));
+      file.write((char*)&logrecord_, sizeof(LogRecord));
       file.flush(); // Garante que os dados sejam salvos imediatamente
       std::cout << "Log registrado para o sensor: " << logrecord_.sensor_id << std::endl;
-      file.close();
+  
     }
 
 
-    void process_get(std::vector<std::string>& tokens){
+    std::string process_get(std::vector<std::string>& tokens){
+      int n_reg = std::stoi(tokens[2]);
+      std::lock_guard<std::mutex> lock(mutex_); // Protege o mapa
+      if (file_map_.find(tokens[1]) == file_map_.end()){
+        return "ERROR|INVALID_SENSOR_ID\r\n";
+      } 
 
+      std::fstream& file = file_map_[tokens[1]];
+
+      if (file.is_open()){
+
+        // Imprime a posição atual do apontador do arquivo (representa o tamanho do arquivo)
+		    int file_size = file.tellg();
+
+        // Recupera o número de registros presentes no arquivo
+		    int n = file_size/sizeof(LogRecord);
+		    std::cout << "Num records: " << n << " (file size: " << file_size << " bytes)" << std::endl;
+
+        //Retorna somente o número de registros presentes no arquivo caso n_reg seja maior que o n 
+        if(n_reg > n){
+          n_reg = n;
+        }
+        
+        LogRecord logrecord;
+        std::string send;
+        std::string str_n = std::to_string(n);
+        send = str_n + ";";
+        for(int i = n_reg; i > 0; i-- ){
+
+          file.seekg((-i)*sizeof(LogRecord), std::ios_base::end);
+          file.read((char*)&logrecord, sizeof(LogRecord));
+
+          // Converte os valores do registro para string
+          std::string str_timestamp = time_t_to_string(logrecord.timestamp);
+          std::string str_value = std::to_string(logrecord.value);
+          
+          // Formata a string no formato solicitado
+          send = send + "|" + str_timestamp + "|" + str_value;
+        }
+
+        return send + "\r\n";
+
+      }       
+      else{
+        std::cout << "Error opening file!" << std::endl;
+        return "ERROR_OPEN_FILE";
+      }     
     }
 
   private:
@@ -109,15 +163,15 @@ private:
             std::istream is(&buffer_);
             std::string message(std::istreambuf_iterator<char>(is), {});
             std::cout << "Received: " << message << std::endl;
-            write_message(message);
             // Processamento da mensagem divide em tokens
             std::vector<std::string> tokens = split_message(message, '|');
             // Processa LOG or GET
             if(tokens[0] == "LOG"){
               logger_.process_log(tokens);
+              write_message(message);
             }
             else{
-              logger_.process_get(tokens);
+              write_message(logger_.process_get(tokens));
             }
             
           }
